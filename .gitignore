@@ -1,0 +1,9 @@
+# 忽略环境变量和虚拟环境
+.env
+.venv/
+venv/
+01.0.py
+02.py
+# 忽略 Python 缓存
+__pycache__/
+*.pyc
