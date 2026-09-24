@@ -1,6 +1,7 @@
 import json
 from pydantic import ValidationError
 from models import WeatherReport,MathReport,SecurityReport
+from logger import log
 # 修复 1：补全 get_weather 的 function 包装，保持格式一致
 tool_schema = [
     {
@@ -77,7 +78,9 @@ def get_weather(city):
     return weather_data.get(city, f"抱歉，暂时没有{city}的天气数据。")
 
 # 修复 2：形参统一改为 messages，修正 tools_schema 拼写
-def run_agent(client, messages, retry_count=3):
+def run_agent(client, messages, retry_count=3, user_query=None):
+    if user_query is None:
+        user_query = next((m["content"] for m in messages if m.get("role") == "user"), "")
     # 1. 第一次调用模型，带上 tools 参数
     response = client.chat.completions.create(
         model="Qwen/Qwen2.5-7B-Instruct",
@@ -87,8 +90,7 @@ def run_agent(client, messages, retry_count=3):
     )
 
     response_message = response.choices[0].message
-    print(f"\n[DEBUG 系统日志] 模型是否触发真实工具调用: "
-          f"{response_message.tool_calls is not None}\n")
+    log.debug(f"模型是否触发真实工具调用: {response_message.tool_calls is not None}")
     # 2. 检查模型是否要调用工具
     if response_message.tool_calls:
         messages.append(response_message)
@@ -169,7 +171,7 @@ def run_agent(client, messages, retry_count=3):
                         return validated_data.model_dump_json(indent=2)
                 return raw_content
             except Exception as e:
-                print(f"\n[⚠️ 校验失败，第 {attempt + 1} 次重试] 错误信息：{e}")
+                log.warning(f"校验失败，第 {attempt + 1} 次重试，错误信息：{e}")
                 # 把错误信息喂回给模型，让它反思修正
                 temp_messages.append({
                     "role": "user",
@@ -181,7 +183,36 @@ def run_agent(client, messages, retry_count=3):
 
     # ⚠️ 新增：如果模型没有调用工具，直接返回它的文本回复，防止返回 None
     if response_message.content and "【调用工具】" in response_message.content:
-        # 强制提示用户，不要让它蒙混过关
-        return f"⚠️ 系统拦截：模型试图绕过工具调用产生幻觉。\n它的虚假回复如下：\n{response_message.content}\n\n请重新提问，我会强制它调用真实工具。"
+        # ⚠️ 核心修复 1：设置递归底线（防无限浪费 Token）
+        if retry_count <= 0:
+            log.error("达到最大重试次数，模型仍执迷不悟试图绕过工具调用，触发本地兜底计算...")
+
+            # 2. 用正则匹配简单的数学表达式（如 156*3）
+            import re
+            match = re.search(r'(\d+)\s*([\+\-\*\/])\s*(\d+)', user_query)
+            if match:
+                num1, op, num2 = int(match.group(1)), match.group(2), int(match.group(3))
+                op_map = {'+': 'add', '-': 'subtract', '*': 'multiply', '/': 'divide'}
+                if op in op_map:
+                    try:
+                        # 直接调用你的本地计算器
+                        res = calculator(op_map[op], num1, num2)
+                        return f"⚠️ 模型拒绝调用工具，系统已启动本地兜底计算：\n{num1} {op} {num2} = {res}"
+                    except Exception as e:
+                        return f"⚠️ 本地兜底计算失败：{e}"
+
+            # 如果正则匹配不到，则返回系统保护提示
+            return "⚠️ 系统保护：模型多次尝试绕过真实工具调用，已被强制终止。请换一种表达方式提问。"
+
+        log.warning(f"检测到模型试图绕过工具调用，触发自动重试... (剩余递归次数: {retry_count})")
+
+        messages.append(response_message)
+        messages.append({
+            "role": "user",
+            "content": "系统检测到你刚才假装调用了工具！请立刻、真正地触发 tool_calls 调用 calculator，不允许输出纯文本！"
+        })
+
+        # ⚠️ 核心修复 2：递归调用时必须递减 retry_count
+        return run_agent(client, messages, retry_count=retry_count - 1, user_query=user_query)
 
     return response_message.content or "抱歉，我不太明白您的意思，请换一种说法。"
