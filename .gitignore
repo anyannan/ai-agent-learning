@@ -9,3 +9,4 @@ __pycache__/
 *.pyc
 *.log
 agent.log
+faiss_index/

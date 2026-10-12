@@ -20,9 +20,9 @@ def create_vector_store(file_path, save_path="faiss_index"):
 
     # 2. 切分文档（沿用昨天学过的递归切分）
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
+        chunk_size=300,
         chunk_overlap=50,
-        separators=["\n\n", "\n", "。", "！", "？", " ", ""]
+        separators=["\n## ","\n\n", "\n", "。", "！", "？", " ", ""]
     )
     chunks = text_splitter.split_documents(documents)
     print(f"✅ 成功切分为 {len(chunks)} 个文本块")
@@ -76,5 +76,5 @@ if __name__ == "__main__":
         vector_store = create_vector_store("data/test.txt")
 
     # 2. 测试检索（这就是未来 RAG 里的 retriever 的底层逻辑）
-    query = "我的项目有哪些架构亮点？"
+    query = "sql注入是什么"
     search_similarity(vector_store, query, k=2)

