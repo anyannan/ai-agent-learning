@@ -1,100 +1,125 @@
-# week3_day5_react_loop.py
+# week3_day5_react_loop_llm.py
 # ---------------------------------------------------------------
-# Week3 Day5: LangGraph 循环与迭代 —— 实现 ReAct 模式
-# 目标：让图具备“自我反思和重试”的能力，并设置熔断机制
+# Week3 Day5: LangGraph 循环迭代 —— 真实模型版 ReAct
+# 目标：用 Qwen 模型驱动“思考”，替换之前的硬编码 if-else
 # ---------------------------------------------------------------
 
+import os
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
 from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
 
-# ① 定义状态
+load_dotenv()
+
+# ① 初始化真实的 Qwen 模型
+llm = ChatOpenAI(
+    model="Qwen/Qwen2.5-7B-Instruct",
+    api_key=os.getenv("SILICONFLOW_API_KEY"),
+    base_url=os.getenv("SILICONFLOW_BASE_URL"),
+    temperature=0.1
+)
+
+# ② 定义状态
 class ReActState(TypedDict):
-    question: str         # 用户问题
-    thought: str          # 当前思考
-    action: str           # 当前行动
-    observation: str      # 观察结果
-    iterations: int       # 迭代次数（熔断计数器）
-    final_answer: str     # 最终答案
+    question: str
+    thought: str
+    action: str
+    observation: str
+    iterations: int
+    final_answer: str
 
-# ② 定义节点
+# ③ 思考节点：用真实模型来决策
 def think_node(state: ReActState):
-    """思考节点：决定是否继续行动，还是给出最终答案"""
     iterations = state.get("iterations", 0)
-    print(f"--- [Think] 第 {iterations + 1} 次思考 ---")
+    print(f"\n--- [Think] 第 {iterations + 1} 次思考（调用 Qwen）---")
 
-    # 模拟大模型的思考逻辑：
-    # 如果已经迭代了 2 次，就给出最终答案（模拟已经找到了足够的信息）
-    if iterations >= 2:
-        print("    👉 决定：信息已足够，给出最终答案。")
+    # 构建 System Prompt，强制模型按格式输出
+    system_prompt = """你是一个 ReAct Agent。请根据用户问题和当前观察结果，决定下一步行动。
+
+规则：
+- 如果你已经有足够信息回答用户问题，请输出：FINAL_ANSWER: <你的答案>
+- 如果你还需要更多信息，请输出：NEED_ACTION: <你需要执行的行动>
+
+请严格按上述格式输出，只输出一行，不要加任何其他内容。"""
+
+    user_content = f"""用户问题：{state['question']}
+当前观察：{state.get('observation', '暂无观察结果')}"""
+
+    # 调用真实模型
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_content)
+    ])
+    content = response.content.strip()
+    print(f"    模型原始输出：{content}")
+
+    # 解析模型输出
+    if "FINAL_ANSWER" in content:
+        # 提取最终答案
+        answer = content.split("FINAL_ANSWER:", 1)[-1].strip()
+        print(f"    👉 解析结果：给出最终答案")
         return {
-            "final_answer": "经过 3 轮思考，我终于找到了答案：它是 42！",
+            "final_answer": answer,
+            "iterations": iterations + 1
+        }
+    elif "NEED_ACTION" in content:
+        # 提取行动
+        action = content.split("NEED_ACTION:", 1)[-1].strip()
+        print(f"    👉 解析结果：需要执行行动 -> {action}")
+        return {
+            "thought": content,
+            "action": action,
+            "iterations": iterations + 1
+        }
+    else:
+        # ⚠️ 模型没按格式输出，兜底处理
+        print(f"    ⚠️ 警告：模型未按格式输出，触发兜底")
+        return {
+            "final_answer": f"模型输出格式异常，兜底回答：{content}",
             "iterations": iterations + 1
         }
 
-    # 否则，决定继续行动
-    print(f"    👉 决定：还需要更多信息，执行行动。")
-    return {
-        "thought": f"第 {iterations + 1} 次思考：我还需要查询更多数据。",
-        "action": "查询数据库",
-        "iterations": iterations + 1
-    }
-
+# ④ 行动节点：模拟工具执行（Day 6 会换成真实工具）
 def act_node(state: ReActState):
-    """行动节点：模拟调用外部工具（比如数据库、搜索引擎）"""
-    print("--- [Act] 执行行动 ---")
-    # 模拟工具返回结果
-    return {
-        "observation": f"行动结果：数据库返回了新的线索（基于行动：{state['action']}）"
-    }
+    print(f"--- [Act] 执行行动：{state['action']} ---")
+    # 模拟一个数据库查询（Day 6 会替换成真实的工具调用）
+    observation = f"数据库查询结果：关于「{state['question']}」的相关资料已找到。"
+    return {"observation": observation}
 
-# ③ 定义路由函数（决定循环是否继续）
+# ⑤ 路由函数：决定循环是否继续
 def route_after_think(state: ReActState):
-    """思考完之后，决定是去执行行动，还是结束循环"""
-    # 熔断机制：如果超过最大迭代次数（比如 3 次），强制结束
-    if state["iterations"] >= 3:
-        print("--- [Router] 触发熔断：达到最大迭代次数，强制结束。 ---")
-        return "end"
-
-    # 如果已经生成了最终答案，结束循环
     if state.get("final_answer"):
-        print("--- [Router] 检测到最终答案，结束循环。 ---")
+        print("--- [Router] 检测到最终答案，结束循环 ---")
         return "end"
-
-    # 否则，去执行行动，然后回到思考节点
-    print("--- [Router] 继续循环，前往行动节点。 ---")
+    if state["iterations"] >= 3:
+        print("--- [Router] 触发熔断：达到最大迭代次数 ---")
+        return "end"
+    print("--- [Router] 继续循环，前往行动节点 ---")
     return "act"
 
-# ④ 构建图
+# ⑥ 构建图
 workflow = StateGraph(ReActState)
-
 workflow.add_node("think", think_node)
 workflow.add_node("act", act_node)
 
-# 入口：从思考开始
 workflow.add_edge(START, "think")
-
-# 👇 核心：在思考节点后添加条件边
-# 思考完之后，要么去“act”（继续循环），要么去“end”（结束）
 workflow.add_conditional_edges(
     "think",
     route_after_think,
-    {
-        "act": "act",     # 继续循环
-        "end": END        # 结束
-    }
+    {"act": "act", "end": END}
 )
-
-# 👇 核心：行动节点完成后，连回思考节点（形成循环）
 workflow.add_edge("act", "think")
 
 app = workflow.compile()
 
-# ⑤ 运行测试
+# ⑦ 运行测试
 if __name__ == "__main__":
-    print("🚀 开始执行 LangGraph ReAct 循环测试...\n")
+    print("🚀 开始执行真实模型驱动的 ReAct 循环...\n")
 
     initial_state = {
-        "question": "宇宙的终极答案是什么？",
+        "question": "请帮我查询一下网络安全中 XSS 攻击的定义",
         "iterations": 0,
         "final_answer": ""
     }
@@ -104,7 +129,3 @@ if __name__ == "__main__":
     print("\n✅ 循环执行完毕！最终状态：")
     print(f"迭代次数：{final_state['iterations']}")
     print(f"最终答案：{final_state['final_answer']}")
-
-    # ⑥ 可视化
-    print("\n📊 工作流 Mermaid 图结构：")
-    print(app.get_graph().draw_mermaid())
