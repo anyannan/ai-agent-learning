@@ -70,6 +70,16 @@ def supervisor_node(state: TeamState):
         decision = "FINISH"
 
     print(f"👉 主管决定下一步交给：{decision}")
+    # 在 return {"next": decision, ...} 之前拦截
+    if decision == "security_expert" and state.get("security_done"):
+        print("⚠️ 拦截：安全专家已执行过，强制重新决策。")
+        decision = "coder"  # 或者直接 FINISH
+    elif decision == "coder" and state.get("coder_done"):
+        print("⚠️ 拦截：码农已修复过，强制重新决策。")
+        decision = "tester"
+    elif decision == "tester" and state.get("tester_done"):
+        print("⚠️ 拦截：测试员已执行过，强制结束。")
+        decision = "FINISH"
     return {"next": decision, "iterations": state.get("iterations", 0) + 1}
 
 def security_expert_node(state: TeamState):
