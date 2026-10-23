@@ -1,29 +1,21 @@
 # main.py
-from langchain_core.messages import HumanMessage
-from agents.main_graph import main_app
+from fastapi import FastAPI
+from api.routes import router
+
+app = FastAPI(
+    title="AutoFix Agent API",
+    description="企业级自动化代码安全修复系统",
+    version="1.0.0"
+)
+
+# 注册路由
+app.include_router(router, prefix="/api/v1")
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "service": "autofix-agent"}
 
 if __name__ == "__main__":
-    print("🚀 启动 AutoFix Agent 企业级全自动修复流水线...\n")
-
-    config = {"configurable": {"thread_id": "autofix-run-1"}, "recursion_limit": 50}
-    user_input = "请检查并修复 sandbox/demo.py 中的 eval 漏洞，修好后请运行 test_demo.py 验证。"
-
-    initial_state = {
-        "messages": [HumanMessage(content=user_input)],
-        "next": "supervisor",
-        "security_done": False,
-        "dev_done": False
-    }
-
-    try:
-        # 运行主图
-        final_state = main_app.invoke(initial_state, config=config)
-
-        print("\n" + "=" * 40)
-        print("✅ 最终执行完毕！消息记录：")
-        for msg in final_state["messages"]:
-            role = getattr(msg, "name", "User")
-            print(f"[{role}]: {str(msg.content)[:100]}...")
-
-    except Exception as e:
-        print(f"\n❌ 系统运行崩溃：{e}")
+    import uvicorn
+    # 注意：uvicorn 启动时，不要用 reload=True（以免子进程干扰 MemorySaver）
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
