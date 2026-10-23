@@ -36,6 +36,15 @@ def write_sandbox_file(file_path: str, content: str) -> str:
     """将修复后的代码覆盖写入沙箱文件。"""
     try:
         safe_path = _get_safe_path(file_path)
+
+        # 🌟 核心修复 1：剥离可能存在的 Markdown 代码块标记
+        if content.strip().startswith("```"):
+            # 去掉第一行的 ```python 或者 ```
+            lines = content.strip().splitlines()
+            if lines[0].startswith("```"): lines = lines[1:]
+            if lines[-1].startswith("```"): lines = lines[:-1]
+            content = "\n".join(lines)
+
         with open(safe_path, "w", encoding="utf-8") as f:
             f.write(content)
         return f"✅ 成功写入 {file_path}（{len(content)} 字符）"
