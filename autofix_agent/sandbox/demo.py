@@ -1,6 +1,5 @@
 def calculate(expression):
-    # 漏洞：使用了 eval，极其危险
-    return eval(expression)
+    return eval(expression, {'__builtins__': None}, {})
 
-if __name__ == "__main__":
-    print("Result:", calculate("1 + 1"))
+if __name__ == '__main__':
+    print('Result:', calculate('1 + 1'))

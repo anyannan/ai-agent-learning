@@ -1,15 +1,16 @@
-# api/routes.py
 import os
 import uuid
-from fastapi import APIRouter, HTTPException
+import shutil
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from api.schemas import FixRequest, FixResponse
 from langchain_core.messages import HumanMessage
 from agents.main_graph import main_app
-from core.config import LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST
+from core.config import SANDBOX_DIR, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST
 
 router = APIRouter()
 
-# 防御性初始化 Langfuse
+# ====== Langfuse 初始化保持不变 ======
 langfuse_handler = None
 if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
     try:
@@ -23,56 +24,62 @@ if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
         print("⚠️ [API] 未安装 langfuse 库，跳过监控")
 
 
+# 🌟 后台清理函数：跑完后自动删除沙箱目录
+def cleanup_sandbox_dir(dir_path: str):
+    if os.path.exists(dir_path):
+        shutil.rmtree(dir_path)
+        print(f"🧹 [GC] 已自动清理沙箱临时目录: {dir_path}")
+
+
 @router.post("/fix", response_model=FixResponse)
-def fix_code(req: FixRequest):
-    """
-    接收代码，触发 AutoFix Agent 进行修复。
-    注意：这里用 def 而不是 async def，防止同步的 Agent 阻塞事件循环。
-    """
-    # 1. 生成唯一的会话 ID
-    thread_id = f"api-req-{uuid.uuid4().hex[:8]}"
+def fix_code(req: FixRequest, background_tasks: BackgroundTasks):
+    # 🌟 核心优化 1：时间戳 + 短 UUID 命名
+    now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    short_id = uuid.uuid4().hex[:6]
+    thread_id = f"{now_str}_{short_id}"
+
+    run_dir = SANDBOX_DIR / thread_id
+    run_dir.mkdir(exist_ok=True, parents=True)
+    sandbox_file = run_dir / req.file_name
+
+    with open(sandbox_file, "w", encoding="utf-8") as f:
+        f.write(req.file_content)
+
     config = {
-        "configurable": {"thread_id": thread_id},
+        "configurable": {
+            "thread_id": thread_id,
+            "sandbox_dir": str(run_dir)
+        },
         "recursion_limit": 50
     }
 
-    # 2. 挂载 Langfuse
     if langfuse_handler:
         config["callbacks"] = [langfuse_handler]
         config["metadata"] = {"langfuse_tags": ["api-fix"]}
 
-    # 3. 将用户传入的代码写入沙箱临时文件（由 Coder 去读取和修改）
-    file_path = "api_target.py"
-    sandbox_file = os.path.join(os.path.dirname(__file__), "..", "sandbox", file_path)
-    with open(sandbox_file, "w", encoding="utf-8") as f:
-        f.write(req.file_content)
-
-    # 4. 组装初始 State
-    user_input = f"请读取 {file_path} 的内容。{req.requirement}"
+    user_input = f"请读取 {req.file_name} 的内容。根据安全专家的报告，修复代码中的漏洞，确保能通过测试。"
     initial_state = {
         "messages": [HumanMessage(content=user_input)],
-        "next": "supervisor",
-        "security_done": False,
-        "dev_done": False
+        "next": "supervisor", "security_done": False, "dev_done": False
     }
 
     try:
-        # 5. 运行 Agent（这里会阻塞直到跑完）
         final_state = main_app.invoke(initial_state, config=config)
 
-        # 6. 提取最终结果（从沙箱读取修复后的代码）
         with open(sandbox_file, "r", encoding="utf-8") as f:
             fixed_code = f.read()
 
-        # 提取最后一条汇报
-        final_msg = final_state["messages"][-1].content
-
         return FixResponse(
             success=True,
-            message=final_msg,
+            message=final_state["messages"][-1].content,
             fixed_code=fixed_code,
-            logs=f"Thread ID: {thread_id}"
+            file_name=req.file_name
         )
-
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Agent 执行崩溃: {str(e)}")
+    finally:
+        # 🌟 核心优化 2：无论成功还是失败，API 返回前，把清理任务丢进后台
+        # 这样不会阻塞 HTTP 响应，但稍后会自动删掉文件夹
+        background_tasks.add_task(cleanup_sandbox_dir, str(run_dir))

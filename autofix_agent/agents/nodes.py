@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, AIMessage, ToolMessage
 from pydantic import BaseModel, Field
 from core.config import API_KEY, BASE_URL, MODEL_NAME
-
+from tools.scan_tools import run_sast_scan
 llm = ChatOpenAI(model=MODEL_NAME, api_key=API_KEY, base_url=BASE_URL, temperature=0)
 
 # --- 结构化路由 ---
@@ -29,8 +29,13 @@ def supervisor_node(state: dict):
     print(f"👉 [Supervisor] 强制决策：{decision}")
     return {"next": decision}
 
+
 def security_expert_node(state: dict):
-    print("  [Security Expert] 正在检查漏洞...")
-    prompt = [SystemMessage(content="你是安全专家。一句话指出代码漏洞，并给出修复建议。")] + state["messages"]
-    res = llm.invoke(prompt)
-    return {"messages": [AIMessage(content=f"【安全汇报】：{res.content}", name="security")], "security_done": True}
+    print("  [Security Expert] 正在调用 SAST 工具检查漏洞...")
+    # 假设我们在 API 层约定，传入的文件名为 target.py
+    scan_result = run_sast_scan.invoke({"file_path": "target.py"})
+
+    return {
+        "messages": [AIMessage(content=f"【安全扫描报告】：\n{scan_result}", name="security")],
+        "security_done": True
+    }
