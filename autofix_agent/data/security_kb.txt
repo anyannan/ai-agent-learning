@@ -1,0 +1,7 @@
+【CWE-95: 动态代码执行（Eval 注入）】
+风险描述：使用 eval() 或 exec() 直接执行不可信输入，会导致远程代码执行（RCE）。
+修复规范：禁止使用 eval()。如果需要计算数学表达式，请使用 ast.literal_eval()；如果需要运算，请使用带白名单的安全计算库，或者通过限制 __builtins__ 为 None 来禁用内置函数，例如：eval(expression, {'__builtins__': None}, {})。
+
+【CWE-89: SQL 注入】
+风险描述：直接拼接用户输入到 SQL 语句中，导致数据库被恶意操作。
+修复规范：必须使用参数化查询（Parameterized Queries），禁止使用字符串拼接。在 Python 中，请使用 cursor.execute("SELECT * FROM users WHERE name = %s", (name,))。

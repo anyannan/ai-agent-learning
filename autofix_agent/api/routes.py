@@ -10,7 +10,6 @@ from core.config import SANDBOX_DIR, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, L
 
 router = APIRouter()
 
-# ====== Langfuse 初始化保持不变 ======
 langfuse_handler = None
 if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
     try:
@@ -24,7 +23,6 @@ if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
         print("⚠️ [API] 未安装 langfuse 库，跳过监控")
 
 
-# 🌟 后台清理函数：跑完后自动删除沙箱目录
 def cleanup_sandbox_dir(dir_path: str):
     if os.path.exists(dir_path):
         shutil.rmtree(dir_path)
@@ -33,31 +31,34 @@ def cleanup_sandbox_dir(dir_path: str):
 
 @router.post("/fix", response_model=FixResponse)
 def fix_code(req: FixRequest, background_tasks: BackgroundTasks):
-    # 🌟 核心优化 1：时间戳 + 短 UUID 命名
     now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    short_id = uuid.uuid4().hex[:6]
-    thread_id = f"{now_str}_{short_id}"
+    thread_id = f"{now_str}_{uuid.uuid4().hex[:6]}"
 
     run_dir = SANDBOX_DIR / thread_id
     run_dir.mkdir(exist_ok=True, parents=True)
-    sandbox_file = run_dir / req.file_name
 
-    with open(sandbox_file, "w", encoding="utf-8") as f:
-        f.write(req.file_content)
+    # 真实写入源码和测试代码
+    source_file = run_dir / req.source_name
+    test_file = run_dir / req.test_name
+
+    with open(source_file, "w", encoding="utf-8") as f:
+        f.write(req.source_code)
+    with open(test_file, "w", encoding="utf-8") as f:
+        f.write(req.test_code)
 
     config = {
         "configurable": {
             "thread_id": thread_id,
             "sandbox_dir": str(run_dir)
         },
-        "recursion_limit": 50
+        "recursion_limit": 30
     }
 
     if langfuse_handler:
         config["callbacks"] = [langfuse_handler]
         config["metadata"] = {"langfuse_tags": ["api-fix"]}
 
-    user_input = f"请读取 {req.file_name} 的内容。根据安全专家的报告，修复代码中的漏洞，确保能通过测试。"
+    user_input = f"请扫描 {req.source_name}，修复漏洞。修复后请运行 {req.test_name} 验证。"
     initial_state = {
         "messages": [HumanMessage(content=user_input)],
         "next": "supervisor", "security_done": False, "dev_done": False
@@ -66,20 +67,24 @@ def fix_code(req: FixRequest, background_tasks: BackgroundTasks):
     try:
         final_state = main_app.invoke(initial_state, config=config)
 
-        with open(sandbox_file, "r", encoding="utf-8") as f:
+        with open(source_file, "r", encoding="utf-8") as f:
             fixed_code = f.read()
 
+        final_report = final_state["messages"][-1].content
+
+        # 企业级真实状态反馈：检查 Agent 是否真的搞定了
+        is_success = (
+                                 "✅ 测试通过" in final_report or "漏洞已彻底修复" in final_report) and "⚠️ 达到最大重试次数" not in final_report
+
         return FixResponse(
-            success=True,
-            message=final_state["messages"][-1].content,
+            success=is_success,
+            message=final_report,
             fixed_code=fixed_code,
-            file_name=req.file_name
+            logs=f"Sandbox: {thread_id}"
         )
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Agent 执行崩溃: {str(e)}")
     finally:
-        # 🌟 核心优化 2：无论成功还是失败，API 返回前，把清理任务丢进后台
-        # 这样不会阻塞 HTTP 响应，但稍后会自动删掉文件夹
         background_tasks.add_task(cleanup_sandbox_dir, str(run_dir))
