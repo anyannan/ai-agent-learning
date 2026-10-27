@@ -2,11 +2,20 @@
 .env
 .venv/
 venv/
-01.0.py
-02.py
+
+# 个人语法练习草稿：半页注释，留在工作区但不进仓库
+week1_basics/01_python_basics.py
+
 # 忽略 Python 缓存
 __pycache__/
 *.pyc
 *.log
 agent.log
 faiss_index/
+
+# 运行时沙箱产物（每次请求一个目录；转人工的会保留，别提交进仓库）
+autofix_agent/sandbox/*/
+.pytest_cache/
+
+# 本地工作记录（个人笔记，不进仓库）
+.workbuddy/

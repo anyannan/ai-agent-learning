@@ -1,4 +1,8 @@
-# main.py
+# week2_rag_api.py
+# 第二周产物：把 RAG 链封成 FastAPI 服务。
+# 注意：这不是主项目入口（主项目在 autofix_agent/main.py），
+# 之前它叫 main.py，和 autofix_agent/main.py 同名，import main 会随机命中其中一个。
+# 启动：uvicorn week2_rag_api:app --port 8001
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict

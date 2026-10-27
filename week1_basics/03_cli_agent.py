@@ -1,3 +1,13 @@
+"""第一周产物：命令行 Agent（手写 Function Calling + 意图路由 + Pydantic 结构化输出）。
+
+和 autofix_agent 的区别：这里**不用** LangChain / LangGraph，
+tool_calls 的解析、工具分发、JSON 校验重试全是手写的 —— 用来搞清框架替你做了什么。
+
+依赖同目录的 tools_func / router / prompts / models / logger，
+所以工作目录必须是 week1_basics：
+    cd week1_basics && python 03_cli_agent.py
+"""
+
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
@@ -11,8 +21,9 @@ base_url = os.environ.get("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1
 if not api_key:
     log.error("❌ 致命错误：未在环境变量或 .env 文件中找到 SILICONFLOW_API_KEY")
     raise ValueError("错误：未找到 SILICONFLOW_API_KEY，请检查配置！")
-masked_key = f"{api_key[:6]}...{api_key[-4:]}" if len(api_key) > 10 else "***"
-log.info(f"✅ 系统初始化成功 | 当前使用 API Key: {masked_key}")
+# 日志里不留 key 的任何片段：安全类工具的日志出现凭据残片，审计会直接记为问题。
+# 需要确认"用的是不是那把 key"应该看环境变量，不该看日志。
+log.info("✅ 系统初始化成功 | 已加载 API Key（长度 %d）", len(api_key))
 client = OpenAI(
     api_key=api_key,
     base_url=base_url,
