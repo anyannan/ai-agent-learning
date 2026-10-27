@@ -1,0 +1,10 @@
+# 仅 week2~week4 教学脚本需要（主项目与容器镜像都不依赖）
+# 安装：pip install -r requirements-extras.txt
+-r requirements.txt
+
+langchain==1.4.6
+langchain-classic==1.0.8
+langchain-mcp-adapters==0.3.1
+mcp==1.30.0
+ragas==0.4.3
+datasets==5.1.0

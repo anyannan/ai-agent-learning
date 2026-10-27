@@ -57,7 +57,8 @@ def run_agent_test(use_rag: bool) -> str:
 
     initial_state = {
         "messages": [HumanMessage(content="请修复 demo.py 中的漏洞，并确保 test_demo.py 通过。")],
-        "next": "supervisor", "security_done": False, "dev_done": False
+        "next": "orchestrator", "intent": "fix", "transitions": 0,
+        "security_done": False, "dev_done": False
     }
 
     print(f"\n🚀 启动 Agent 测试 [Use RAG: {use_rag}] ...")
@@ -85,7 +86,9 @@ def evaluate_with_judge(code_without_rag: str, code_with_rag: str):
         model="Qwen/Qwen2.5-7B-Instruct",
         api_key=os.getenv("SILICONFLOW_API_KEY"),
         base_url=os.getenv("SILICONFLOW_BASE_URL"),
-        temperature=0
+        temperature=0,
+        timeout=60,
+        max_retries=2,
     ).with_structured_output(ScoreResult, method="function_calling")
 
     judge_prompt = f"""
