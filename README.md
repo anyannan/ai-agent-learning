@@ -1,8 +1,42 @@
-# AI Agent 开发实战：从 Function Calling 到防御性工程
+# AutoFix Agent：可复现的代码安全修复 Agent
 
-一个 6 周的 AI Agent 工程实践仓库。主线产物是 `autofix_agent/`：把"安全扫描 → 修复 → 测试 → 复扫"封装成可被 API / CLI 调用的自动化闭环。`week2_*` ~ `week4_*` 是按天推进的能力切片。
+![CI](https://github.com/anyannan/ai-agent-learning/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
+
+把"静态扫描 → 检索企业私有规范 → LLM 生成修复 → 契约测试 → 安全复扫 → 规范符合性校验"串成闭环，
+对外提供 REST API、CLI 与 Git pre-commit 钩子三种入口。
+
+`week1_basics/` ~ `week4_*` 是按周推进的能力切片；主线产物是 `autofix_agent/`。
 
 > 完整功能清单、优化记录与技术细节见 [`docs/项目说明书.md`](docs/项目说明书.md)；本文只保留快速开始与关键取舍。
+
+## 30 秒看懂
+
+**LLM 写代码不难，难的是判断它写对了。** 这个项目的复杂度几乎全花在判定上：每层结论都是结构化状态
+（`clean / vulnerable / unknown`），`unknown` 一律转人工，**绝不降级成"通过"**。
+
+```bash
+# 1) 起服务（依赖见下方「快速开始」）
+cd autofix_agent && uvicorn main:app --port 8000
+
+# 2) 修一个 eval 注入
+curl -X POST http://127.0.0.1:8000/api/v1/fix \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: dev-local-key" \
+  -d '{"source_name":"demo.py","source_code":"def f(e):\n    return eval(e)\n"}'
+# → status: fixed
+#   fixed_code: from corp_sec import safe_calc ...
+#   audit_report: scan=clean / test=clean / policy=compliant / verdict=pass
+```
+
+> `X-API-Key` 头在未配置 `AUTOFIX_API_KEYS` 时会被忽略（只服务本机），所以这两行对两种配置都成立。
+
+| 指标 | 数值 | 怎么得到的 |
+|---|---|---|
+| 回归测试 | **80 条全绿** | `pytest tests -q`，CI 上 Python 3.11 / 3.12 双版本跑 |
+| 门禁评测 | **23/23** | `eval_harness.py --gate`，零 token，通过线 100% |
+| 端到端评测 | **3/3** | `eval_harness.py --e2e`，真实调用，通过线 80% |
+| 规范路由命中率 | **38% → 100%** | `eval_rag.py`，14 条标注 query（向量检索 vs 规则路由） |
 
 ## 架构：确定性编排 + 有界自主
 
@@ -186,6 +220,8 @@ python eval_harness.py --e2e                     # 3 条，真实调用
 python eval_harness.py --all --report eval_report.md
 python eval_rag.py                               # 检索质量对比（14 条标注 query）
 ```
+
+CI 里只跑 `--gate`（零 token）。`--e2e` 会真花额度，所以设成手动触发：在仓库 Settings → Secrets 配好 `SILICONFLOW_API_KEY` 后，到 Actions 页面点 `Run workflow`；没配 secret 则自动跳过并打一条 notice。
 
 基线结果（`eval_report.md`，2026-10-27）：门禁层 23/23 = 100%，端到端层 3/3 = 100%（E01 8.68s / E02 0.71s / E03 4.39s）。
 

@@ -1,0 +1,80 @@
+name: CI
+
+# 只在 push / PR / 手动触发时跑，不跑定时（这个项目不需要夜间构建）
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 开发环境是 3.13，CI 先覆盖更稳的两个版本。
+        # 加 3.13 需要确认 faiss-cpu 有对应 wheel，未验证前不放进来。
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: 安装依赖（运行 + 测试）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: 单元测试（80 条）
+        working-directory: autofix_agent
+        run: python -m pytest tests -q
+
+      - name: 门禁评测（23 条，零 token）
+        working-directory: autofix_agent
+        run: python eval_harness.py --gate
+
+  e2e:
+    # 端到端评测会真花 API 额度，所以只在手动触发时跑，不挂在 push 上。
+    name: e2e (manual, real LLM)
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+      SILICONFLOW_BASE_URL: ${{ vars.SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1' }}
+      MODEL_NAME: ${{ vars.MODEL_NAME || 'Qwen/Qwen2.5-7B-Instruct' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: 未配置密钥则跳过
+        if: env.SILICONFLOW_API_KEY == ''
+        run: |
+          echo "::notice::未配置 SILICONFLOW_API_KEY，跳过端到端评测"
+          echo "在 Settings → Secrets and variables → Actions 添加该 secret 后可运行"
+
+      - name: 端到端评测（3 条，真实调用）
+        if: env.SILICONFLOW_API_KEY != ''
+        working-directory: autofix_agent
+        run: python eval_harness.py --e2e
