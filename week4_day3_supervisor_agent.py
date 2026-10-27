@@ -1,3 +1,11 @@
+# week4_day3_supervisor_agent.py
+# ---------------------------------------------------------------
+# 【对照实现，非生产版】LLM 路由的 Supervisor 多 Agent 协作网络。
+# 生产版 autofix_agent 最终改用了确定性编排（autofix_agent/agents/nodes.py: orchestrator_node），
+# 原因是"安全扫描必须先于修复"是业务不变量，交给模型决策只会引入不确定性。
+# 保留此文件用于对比两种范式的取舍：LLM 路由更灵活但不可预测，
+# 确定性编排可预测但无法处理"拓扑需要按输入动态生成"的场景。
+# ---------------------------------------------------------------
 import os
 from typing import Literal, TypedDict, Annotated
 from dotenv import load_dotenv

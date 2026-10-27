@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "_comment": "企业私有安全规范的机器可执行版本。与 data/security_kb.txt（自然语言版）同源，但只有这里的规则能参与判定。新增一类漏洞时必须补规则，否则该漏洞的修复不会被判 PASS（会转人工）。",
+  "rules": [
+    {
+      "id": "CWE-95-dynamic-exec",
+      "kb_id": "CWE-95",
+      "description": "禁止 eval/exec/compile/ast.literal_eval；必须使用内部安全库 corp_sec.safe_calc",
+      "issue_contains": ["eval", "exec_used", "cwe-95", "dynamic code execution", "blacklist"],
+      "forbidden_calls": ["eval", "exec", "compile", "ast.literal_eval"],
+      "required_calls": ["corp_sec.safe_calc"],
+      "forbidden_patterns": []
+    },
+    {
+      "id": "CWE-89-sql-injection",
+      "kb_id": "CWE-89",
+      "description": "禁止把变量拼接进 SQL 字符串；必须使用参数化查询",
+      "issue_contains": ["sql", "cwe-89", "sql injection"],
+      "forbidden_calls": [],
+      "required_calls": [],
+      "forbidden_patterns": [
+        "execute\\s*\\(\\s*f[\"'].*\\{",
+        "execute\\s*\\([^)]*%\\s*[\\(%]",
+        "execute\\s*\\([^)]*\\+\\s*[A-Za-z_]"
+      ]
+    }
+  ]
+}
